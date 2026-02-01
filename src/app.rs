@@ -21,18 +21,26 @@ pub struct AppModel {
     /// Configuration data that persists between application runs.
     config: Config,
     /// The audio player.
-    player: Player,
+    player: Option<Player>,
     /// Current playback state.
     play_state: State,
 }
 
 impl Default for AppModel {
     fn default() -> Self {
+        let player = match Player::new() {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::error!("Failed to initialize player: {}", e);
+                None
+            }
+        };
+
         Self {
             core: Default::default(),
             popup: Default::default(),
             config: Default::default(),
-            player: Player::new(),
+            player,
             play_state: State::Null,
         }
     }
@@ -104,6 +112,13 @@ impl cosmic::Application for AppModel {
     /// This view should emit messages to toggle the applet's popup window, which will
     /// be drawn using the `view_window` method.
     fn view(&self) -> Element<'_, Self::Message> {
+        if self.player.is_none() {
+            return self.core
+                .applet
+                .icon_button("dialog-error-symbolic")
+                .into();
+        }
+
         let icon = match self.play_state {
             State::Playing | State::Paused => "media-playback-stop-symbolic",
             _ => "display-symbolic",
@@ -120,6 +135,12 @@ impl cosmic::Application for AppModel {
     /// multiple poups, you may match the id parameter to determine which popup to
     /// create a view for.
     fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
+        if self.player.is_none() {
+            return self.core.applet.popup_container(
+                widget::text::text("Audio initialization failed. Check logs.")
+            ).into();
+        }
+
         let (play_pause_icon, play_pause_label) = match self.play_state {
             State::Playing | State::Paused => {
                 ("media-playback-stop-symbolic", "Stop")
@@ -149,10 +170,7 @@ impl cosmic::Application for AppModel {
         struct MySubscription;
         struct PlayerSubscription;
 
-        let bus = self.player.bus();
-        let pipeline = self.player.pipeline().clone();
-
-        Subscription::batch(vec![
+        let mut subs = vec![
             // Create a subscription which emits updates through a channel.
             Subscription::run_with_id(
                 std::any::TypeId::of::<MySubscription>(),
@@ -162,8 +180,19 @@ impl cosmic::Application for AppModel {
                     futures_util::future::pending().await
                 }),
             ),
-            // GStreamer Bus Subscription
-            Subscription::run_with_id(
+            // Watch for application configuration changes.
+            self.core()
+                .watch_config::<Config>(Self::APP_ID)
+                .map(|update| {
+                    Message::UpdateConfig(update.config)
+                }),
+        ];
+
+        if let Some(player) = &self.player {
+            let bus = player.bus();
+            let pipeline = player.pipeline().clone();
+
+            subs.push(Subscription::run_with_id(
                 std::any::TypeId::of::<PlayerSubscription>(),
                 cosmic::iced::stream::channel(10, move |mut channel| async move {
                     let mut bus_stream = bus.stream();
@@ -185,7 +214,7 @@ impl cosmic::Application for AppModel {
                                 let _ = channel.send(Message::MetadataUpdated(tags)).await;
                             }
                             MessageView::Error(err) => {
-                                eprintln!("GStreamer error: {} ({:?})", err.error(), err.debug());
+                                tracing::error!("GStreamer error: {} ({:?})", err.error(), err.debug());
                                 let _ = channel.send(Message::PlayerStateChanged(State::Null)).await;
                             }
                             _ => (),
@@ -194,14 +223,10 @@ impl cosmic::Application for AppModel {
 
                     futures_util::future::pending().await
                 }),
-            ),
-            // Watch for application configuration changes.
-            self.core()
-                .watch_config::<Config>(Self::APP_ID)
-                .map(|update| {
-                    Message::UpdateConfig(update.config)
-                }),
-        ])
+            ));
+        }
+
+        Subscription::batch(subs)
     }
 
     /// Handles messages emitted by the application and its widgets.
@@ -217,12 +242,20 @@ impl cosmic::Application for AppModel {
             Message::UpdateConfig(config) => {
                 self.config = config;
             }
-            Message::TogglePlayback => match self.play_state {
-                State::Playing | State::Paused => {
-                    self.player.stop();
-                }
-                _ => {
-                    self.player.play("http://icecast.radiofrance.fr/fip-midfi.mp3");
+            Message::TogglePlayback => {
+                if let Some(player) = &self.player {
+                    match self.play_state {
+                        State::Playing | State::Paused => {
+                            if let Err(e) = player.stop() {
+                                tracing::error!("Failed to stop playback: {}", e);
+                            }
+                        }
+                        _ => {
+                            if let Err(e) = player.play("http://icecast.radiofrance.fr/fip-midfi.mp3") {
+                                tracing::error!("Failed to start playback: {}", e);
+                            }
+                        }
+                    }
                 }
             },
             Message::PlayerStateChanged(state) => {

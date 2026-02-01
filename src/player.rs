@@ -2,37 +2,66 @@
 
 use gstreamer::prelude::*;
 use gstreamer::{Pipeline, State};
+use thiserror::Error;
 
+#[derive(Debug, Error)]
+pub enum PlayerError {
+    #[error("Failed to create element: {0}")]
+    CreateElement(#[from] gstreamer::glib::BoolError),
+    #[error("Element is not a pipeline")]
+    NotAPipeline,
+    #[error("State change failed")]
+    StateChange,
+}
+
+/// A wrapper around a GStreamer pipeline for audio playback.
 pub struct Player {
     pipeline: Pipeline,
 }
 
 impl Player {
-    pub fn new() -> Self {
+    /// Create a new Player instance.
+    ///
+    /// This initializes a `playbin3` pipeline.
+    pub fn new() -> Result<Self, PlayerError> {
         // Create a playbin3 element
         let playbin = gstreamer::ElementFactory::make("playbin3")
             .build()
-            .expect("Failed to create playbin3 element");
+            .map_err(PlayerError::CreateElement)?;
 
         let pipeline = playbin
             .downcast::<Pipeline>()
-            .expect("playbin3 is not a pipeline");
+            .map_err(|_| PlayerError::NotAPipeline)?;
 
-        Self { pipeline }
+        Ok(Self { pipeline })
     }
 
-    pub fn play(&self, uri: &str) {
-        self.pipeline.set_state(State::Null).ok();
+    /// Start playback of the given URI.
+    pub fn play(&self, uri: &str) -> Result<(), PlayerError> {
+        self.pipeline
+            .set_state(State::Null)
+            .map_err(|_| PlayerError::StateChange)?;
         self.pipeline.set_property("uri", uri);
-        self.pipeline.set_state(State::Playing).ok();
+        self.pipeline
+            .set_state(State::Playing)
+            .map_err(|_| PlayerError::StateChange)?;
+        Ok(())
     }
 
-    pub fn stop(&self) {
-        self.pipeline.set_state(State::Null).ok();
+    /// Stop playback.
+    pub fn stop(&self) -> Result<(), PlayerError> {
+        self.pipeline
+            .set_state(State::Null)
+            .map_err(|_| PlayerError::StateChange)?;
+        Ok(())
     }
 
-    pub fn pause(&self) {
-        self.pipeline.set_state(State::Paused).ok();
+    /// Pause playback.
+    pub fn pause(&self) -> Result<(), PlayerError> {
+        self.pipeline
+            .set_state(State::Paused)
+            .map_err(|_| PlayerError::StateChange)?;
+        Ok(())
     }
 
     pub fn set_volume(&self, volume: f64) {
@@ -52,8 +81,8 @@ impl Player {
     }
 }
 
-impl Default for Player {
-    fn default() -> Self {
-        Self::new()
+impl Drop for Player {
+    fn drop(&mut self) {
+        let _ = self.pipeline.set_state(State::Null);
     }
 }
