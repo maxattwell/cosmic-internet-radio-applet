@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Cosmic Internet Radio Applet
+Comment=An internet radio applet for the COSMIC desktop
+Type=Application
+Icon=com.github.maxattwell.cosmic-internet-radio-applet
+Exec=cosmic-internet-radio-applet %F
+Terminal=false
+StartupNotify=true
+Categories=COSMIC
+Keywords=COSMIC
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto
+MimeType=
