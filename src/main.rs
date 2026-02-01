@@ -3,8 +3,12 @@
 mod app;
 mod config;
 mod i18n;
+mod player;
 
 fn main() -> cosmic::iced::Result {
+    // Initialize GStreamer
+    gstreamer::init().expect("Failed to initialize GStreamer");
+
     // Get the system's preferred languages.
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
 
