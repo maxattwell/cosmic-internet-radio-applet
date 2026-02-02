@@ -39,6 +39,16 @@ pub struct AppModel {
     new_station_url: String,
     /// Validation error for new station form.
     new_station_error: Option<String>,
+    /// Index of station being edited (None if not editing).
+    editing_station_idx: Option<usize>,
+    /// Edit form station name input.
+    edit_station_name: String,
+    /// Edit form station URL input.
+    edit_station_url: String,
+    /// Validation error for edit form.
+    edit_station_error: Option<String>,
+    /// Index of station pending deletion (for confirmation).
+    deleting_station_idx: Option<usize>,
 }
 
 impl Default for AppModel {
@@ -64,6 +74,11 @@ impl Default for AppModel {
             new_station_name: String::new(),
             new_station_url: String::new(),
             new_station_error: None,
+            editing_station_idx: None,
+            edit_station_name: String::new(),
+            edit_station_url: String::new(),
+            edit_station_error: None,
+            deleting_station_idx: None,
         }
     }
 }
@@ -96,6 +111,22 @@ pub enum Message {
     SaveNewStation,
     /// Cancel adding station
     CancelAddStation,
+    /// Start editing a station
+    StartEditStation(usize),
+    /// Edit form station name changed
+    EditStationNameChanged(String),
+    /// Edit form station URL changed
+    EditStationUrlChanged(String),
+    /// Save edited station
+    SaveEditStation,
+    /// Cancel editing station
+    CancelEditStation,
+    /// Start deleting a station (show confirmation)
+    StartDeleteStation(usize),
+    /// Confirm and delete station
+    ConfirmDeleteStation,
+    /// Cancel deletion
+    CancelDeleteStation,
 }
 
 /// Helper methods for AppModel
@@ -159,6 +190,98 @@ impl AppModel {
         self.core.applet.popup_container(form).into()
     }
 
+    /// View for the edit station form
+    fn view_edit_station_form(&self, _idx: usize) -> Element<'_, Message> {
+        let mut form = widget::column()
+            .padding(10)
+            .spacing(10);
+
+        // Header
+        form = form.push(
+            widget::text::text("Edit Station")
+                .size(16)
+        );
+
+        // Name input
+        form = form.push(
+            widget::column()
+                .spacing(5)
+                .push(widget::text::text("Station Name:").size(12))
+                .push(
+                    widget::text_input("e.g., My Radio Station", &self.edit_station_name)
+                        .on_input(Message::EditStationNameChanged)
+                )
+        );
+
+        // URL input
+        form = form.push(
+            widget::column()
+                .spacing(5)
+                .push(widget::text::text("Stream URL:").size(12))
+                .push(
+                    widget::text_input("e.g., http://example.com/stream.mp3", &self.edit_station_url)
+                        .on_input(Message::EditStationUrlChanged)
+                )
+        );
+
+        // Error message
+        if let Some(error) = &self.edit_station_error {
+            form = form.push(
+                widget::text::text(format!("Error: {}", error))
+                    .size(12)
+            );
+        }
+
+        // Buttons
+        form = form.push(
+            widget::row()
+                .spacing(10)
+                .push(
+                    widget::button::text("Save")
+                        .on_press(Message::SaveEditStation)
+                )
+                .push(
+                    widget::button::text("Cancel")
+                        .on_press(Message::CancelEditStation)
+                )
+        );
+
+        self.core.applet.popup_container(form).into()
+    }
+
+    /// View for delete confirmation
+    fn view_delete_confirmation(&self, idx: usize) -> Element<'_, Message> {
+        let station_name = self.channels.get(idx)
+            .map(|c| c.name.as_str())
+            .unwrap_or("this station");
+
+        let content = widget::column()
+            .padding(10)
+            .spacing(10)
+            .push(
+                widget::text::text("Delete Station?")
+                    .size(16)
+            )
+            .push(
+                widget::text::text(format!("Are you sure you want to delete '{}'", station_name))
+                    .size(12)
+            )
+            .push(
+                widget::row()
+                    .spacing(10)
+                    .push(
+                        widget::button::text("Delete")
+                            .on_press(Message::ConfirmDeleteStation)
+                    )
+                    .push(
+                        widget::button::text("Cancel")
+                            .on_press(Message::CancelDeleteStation)
+                    )
+            );
+
+        self.core.applet.popup_container(content).into()
+    }
+
     /// View for the channel list
     fn view_channel_list(&self) -> Element<'_, Message> {
         // Build the channel list
@@ -207,16 +330,39 @@ impl AppModel {
                 "media-playback-start-symbolic"
             };
 
-            let row = widget::settings::item(
-                &channel.name,
+            // Main row with channel name and play button
+            let mut row = widget::row()
+                .spacing(5)
+                .align_y(cosmic::iced::Alignment::Center);
+
+            // Channel name (expand to fill)
+            row = row.push(
+                widget::text::text(&channel.name)
+                    .width(cosmic::iced::Length::Fill)
+            );
+
+            // Play/Stop button
+            row = row.push(
                 widget::button::icon(widget::icon::from_name(icon_name))
                     .on_press(if is_playing {
                         Message::StopPlayback
                     } else {
                         Message::PlayChannel(idx)
-                    }),
+                    })
             );
-            
+
+            // Edit button
+            row = row.push(
+                widget::button::icon(widget::icon::from_name("edit-symbolic"))
+                    .on_press(Message::StartEditStation(idx))
+            );
+
+            // Delete button
+            row = row.push(
+                widget::button::icon(widget::icon::from_name("edit-delete-symbolic"))
+                    .on_press(Message::StartDeleteStation(idx))
+            );
+
             content_list = content_list.push(row);
         }
 
@@ -338,6 +484,16 @@ impl cosmic::Application for AppModel {
                         .on_press(Message::ChannelsLoaded(channels::default_channels().channels))
                 );
             return self.core.applet.popup_container(error_widget).into();
+        }
+
+        // Show edit station form
+        if let Some(idx) = self.editing_station_idx {
+            return self.view_edit_station_form(idx);
+        }
+
+        // Show delete confirmation
+        if let Some(idx) = self.deleting_station_idx {
+            return self.view_delete_confirmation(idx);
         }
 
         // Show add station form
@@ -584,6 +740,131 @@ impl cosmic::Application for AppModel {
                 self.new_station_name.clear();
                 self.new_station_url.clear();
                 self.new_station_error = None;
+            }
+            Message::StartEditStation(idx) => {
+                if let Some(channel) = self.channels.get(idx) {
+                    self.editing_station_idx = Some(idx);
+                    self.edit_station_name = channel.name.clone();
+                    self.edit_station_url = channel.uri.clone();
+                    self.edit_station_error = None;
+                }
+            }
+            Message::EditStationNameChanged(name) => {
+                self.edit_station_name = name;
+                self.edit_station_error = None;
+            }
+            Message::EditStationUrlChanged(url) => {
+                self.edit_station_url = url;
+                self.edit_station_error = None;
+            }
+            Message::SaveEditStation => {
+                if let Some(idx) = self.editing_station_idx {
+                    // Validate inputs
+                    let name = self.edit_station_name.trim();
+                    let url = self.edit_station_url.trim();
+                    
+                    if name.is_empty() {
+                        self.edit_station_error = Some("Station name is required".to_string());
+                        return Task::none();
+                    }
+                    
+                    if url.is_empty() {
+                        self.edit_station_error = Some("Stream URL is required".to_string());
+                        return Task::none();
+                    }
+                    
+                    // Basic URL validation
+                    if !url.starts_with("http://") && !url.starts_with("https://") {
+                        self.edit_station_error = Some("URL must start with http:// or https://".to_string());
+                        return Task::none();
+                    }
+                    
+                    // Update the channel
+                    if let Some(channel) = self.channels.get_mut(idx) {
+                        let old_id = channel.id.clone();
+                        channel.name = name.to_string();
+                        channel.uri = url.to_string();
+                        // Only regenerate ID if name changed significantly
+                        if name.to_lowercase().replace(' ', "-") != old_id {
+                            channel.id = name.to_lowercase()
+                                .replace(' ', "-")
+                                .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
+                        }
+                        
+                        // Save to file
+                        let list = ChannelList {
+                            channels: self.channels.clone(),
+                        };
+                        
+                        if let Err(e) = channels::save_channels(&list) {
+                            tracing::error!("Failed to save channels: {}", e);
+                            self.error_message = Some(format!("Failed to save: {}", e));
+                        } else {
+                            tracing::info!("Updated station: {}", name);
+                            // Clear form and close
+                            self.editing_station_idx = None;
+                            self.edit_station_name.clear();
+                            self.edit_station_url.clear();
+                            self.edit_station_error = None;
+                            
+                            // If this was the currently playing channel, stop playback
+                            if self.current_channel_idx == Some(idx) {
+                                if let Some(player) = &self.player {
+                                    let _ = player.stop();
+                                }
+                                self.current_channel_idx = None;
+                            }
+                        }
+                    }
+                }
+            }
+            Message::CancelEditStation => {
+                self.editing_station_idx = None;
+                self.edit_station_name.clear();
+                self.edit_station_url.clear();
+                self.edit_station_error = None;
+            }
+            Message::StartDeleteStation(idx) => {
+                self.deleting_station_idx = Some(idx);
+            }
+            Message::ConfirmDeleteStation => {
+                if let Some(idx) = self.deleting_station_idx {
+                    // Remove the channel
+                    if idx < self.channels.len() {
+                        let removed_channel = self.channels.remove(idx);
+                        
+                        // Save to file
+                        let list = ChannelList {
+                            channels: self.channels.clone(),
+                        };
+                        
+                        if let Err(e) = channels::save_channels(&list) {
+                            tracing::error!("Failed to save channels after deletion: {}", e);
+                            self.error_message = Some(format!("Failed to save: {}", e));
+                            // Restore the channel
+                            self.channels.insert(idx, removed_channel);
+                        } else {
+                            tracing::info!("Deleted station: {}", removed_channel.name);
+                            
+                            // If this was the currently playing channel, stop playback
+                            if self.current_channel_idx == Some(idx) {
+                                if let Some(player) = &self.player {
+                                    let _ = player.stop();
+                                }
+                                self.current_channel_idx = None;
+                            } else if let Some(current_idx) = self.current_channel_idx {
+                                // Adjust current channel index if needed
+                                if current_idx > idx {
+                                    self.current_channel_idx = Some(current_idx - 1);
+                                }
+                            }
+                        }
+                    }
+                    self.deleting_station_idx = None;
+                }
+            }
+            Message::CancelDeleteStation => {
+                self.deleting_station_idx = None;
             }
             Message::TogglePopup => {
                 return if let Some(p) = self.popup.take() {
