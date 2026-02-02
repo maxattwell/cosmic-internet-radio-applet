@@ -55,23 +55,6 @@ impl Player {
             .map_err(|_| PlayerError::StateChange)?;
         Ok(())
     }
-
-    /// Pause playback.
-    pub fn pause(&self) -> Result<(), PlayerError> {
-        self.pipeline
-            .set_state(State::Paused)
-            .map_err(|_| PlayerError::StateChange)?;
-        Ok(())
-    }
-
-    pub fn set_volume(&self, volume: f64) {
-        self.pipeline.set_property("volume", volume);
-    }
-
-    pub fn volume(&self) -> f64 {
-        self.pipeline.property("volume")
-    }
-
     pub fn bus(&self) -> gstreamer::Bus {
         self.pipeline.bus().expect("Pipeline has no bus")
     }
