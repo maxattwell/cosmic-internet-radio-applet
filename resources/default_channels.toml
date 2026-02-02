@@ -1,0 +1,23 @@
+# Default channels for COSMIC Internet Radio Applet
+# Add your favorite stations here!
+
+# French public radio - eclectic music
+[[channels]]
+id = "fip-radio"
+name = "FIP Radio"
+uri = "http://icecast.radiofrance.fr/fip-midfi.mp3"
+favourite = true
+
+# SomaFM - ambient electronic chillout
+[[channels]]
+id = "groove-salad"
+name = "Groove Salad"
+uri = "https://somafm.com/groovesalad256.pls"
+favourite = true
+
+# SomaFM - downtempo electronic
+[[channels]]
+id = "drone-zone"
+name = "Drone Zone"
+uri = "https://somafm.com/dronezone256.pls"
+favourite = false

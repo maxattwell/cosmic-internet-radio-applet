@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::channels::{self, Channel, ChannelList};
 use crate::config::Config;
 use crate::player::Player;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
-use cosmic::iced::{window::Id, Limits, Subscription};
+use cosmic::iced::{window::Id, Limits, Subscription, Task};
 use cosmic::iced_winit::commands::popup::{destroy_popup, get_popup};
 use cosmic::prelude::*;
 use cosmic::widget;
@@ -24,6 +25,20 @@ pub struct AppModel {
     player: Option<Player>,
     /// Current playback state.
     play_state: State,
+    /// List of radio channels.
+    channels: Vec<Channel>,
+    /// Index of the currently playing channel (None if stopped).
+    current_channel_idx: Option<usize>,
+    /// Error message to display (if any).
+    error_message: Option<String>,
+    /// Whether we're currently in "add station" mode.
+    adding_station: bool,
+    /// New station name input.
+    new_station_name: String,
+    /// New station URL input.
+    new_station_url: String,
+    /// Validation error for new station form.
+    new_station_error: Option<String>,
 }
 
 impl Default for AppModel {
@@ -42,6 +57,13 @@ impl Default for AppModel {
             config: Default::default(),
             player,
             play_state: State::Null,
+            channels: Vec::new(),
+            current_channel_idx: None,
+            error_message: None,
+            adding_station: false,
+            new_station_name: String::new(),
+            new_station_url: String::new(),
+            new_station_error: None,
         }
     }
 }
@@ -56,6 +78,159 @@ pub enum Message {
     TogglePlayback,
     PlayerStateChanged(State),
     MetadataUpdated(gstreamer::TagList),
+    /// Play a specific channel by its index in the channels list
+    PlayChannel(usize),
+    /// Stop playback and clear current channel
+    StopPlayback,
+    /// Channels loaded from file
+    ChannelsLoaded(Vec<Channel>),
+    /// Error loading channels
+    ChannelError(String),
+    /// Toggle add station form visibility
+    ToggleAddStation,
+    /// New station name changed
+    NewStationNameChanged(String),
+    /// New station URL changed
+    NewStationUrlChanged(String),
+    /// Save the new station
+    SaveNewStation,
+    /// Cancel adding station
+    CancelAddStation,
+}
+
+/// Helper methods for AppModel
+impl AppModel {
+    /// View for the add station form
+    fn view_add_station_form(&self) -> Element<'_, Message> {
+        let mut form = widget::column()
+            .padding(10)
+            .spacing(10);
+
+        // Header
+        form = form.push(
+            widget::text::text("Add New Station")
+                .size(16)
+        );
+
+        // Name input
+        form = form.push(
+            widget::column()
+                .spacing(5)
+                .push(widget::text::text("Station Name:").size(12))
+                .push(
+                    widget::text_input("e.g., My Radio Station", &self.new_station_name)
+                        .on_input(Message::NewStationNameChanged)
+                )
+        );
+
+        // URL input
+        form = form.push(
+            widget::column()
+                .spacing(5)
+                .push(widget::text::text("Stream URL:").size(12))
+                .push(
+                    widget::text_input("e.g., http://example.com/stream.mp3", &self.new_station_url)
+                        .on_input(Message::NewStationUrlChanged)
+                )
+        );
+
+        // Error message
+        if let Some(error) = &self.new_station_error {
+            form = form.push(
+                widget::text::text(format!("Error: {}", error))
+                    .size(12)
+            );
+        }
+
+        // Buttons
+        form = form.push(
+            widget::row()
+                .spacing(10)
+                .push(
+                    widget::button::text("Save")
+                        .on_press(Message::SaveNewStation)
+                )
+                .push(
+                    widget::button::text("Cancel")
+                        .on_press(Message::CancelAddStation)
+                )
+        );
+
+        self.core.applet.popup_container(form).into()
+    }
+
+    /// View for the channel list
+    fn view_channel_list(&self) -> Element<'_, Message> {
+        // Build the channel list
+        let mut content_list = widget::column()
+            .padding(5)
+            .spacing(2);
+
+        // Add header with current status
+        let header_text = if let Some(idx) = self.current_channel_idx {
+            if let Some(channel) = self.channels.get(idx) {
+                format!("Now Playing: {}", channel.name)
+            } else {
+                "Internet Radio".to_string()
+            }
+        } else {
+            "Internet Radio".to_string()
+        };
+
+        content_list = content_list.push(
+            widget::text::text(header_text)
+                .size(16)
+        );
+
+        // Add stop button if playing
+        if self.play_state == State::Playing {
+            content_list = content_list.push(
+                widget::settings::item(
+                    "Stop Playback",
+                    widget::button::icon(widget::icon::from_name("media-playback-stop-symbolic"))
+                        .on_press(Message::StopPlayback),
+                )
+            );
+        }
+
+        // Add separator
+        content_list = content_list.push(widget::divider::horizontal::default());
+
+        // Add each channel
+        for (idx, channel) in self.channels.iter().enumerate() {
+            let is_playing = self.current_channel_idx == Some(idx) 
+                && self.play_state == State::Playing;
+            
+            let icon_name = if is_playing {
+                "media-playback-stop-symbolic"
+            } else {
+                "media-playback-start-symbolic"
+            };
+
+            let row = widget::settings::item(
+                &channel.name,
+                widget::button::icon(widget::icon::from_name(icon_name))
+                    .on_press(if is_playing {
+                        Message::StopPlayback
+                    } else {
+                        Message::PlayChannel(idx)
+                    }),
+            );
+            
+            content_list = content_list.push(row);
+        }
+
+        // Add separator before Add Station button
+        content_list = content_list.push(widget::divider::horizontal::default());
+
+        // Add Station button
+        content_list = content_list.push(
+            widget::button::text("+ Add Station")
+                .on_press(Message::ToggleAddStation)
+        );
+
+        self.core.applet.popup_container(content_list).into()
+    }
 }
 
 /// Create a COSMIC application from the app model
@@ -99,7 +274,16 @@ impl cosmic::Application for AppModel {
             ..Default::default()
         };
 
-        (app, Task::none())
+        // Load channels asynchronously
+        let load_channels_task = Task::perform(
+            async { channels::load_channels() },
+            |result| match result {
+                Ok(list) => Message::ChannelsLoaded(list.channels),
+                Err(e) => Message::ChannelError(e.to_string()),
+            },
+        ).map(|msg| cosmic::Action::App(msg));
+
+        (app, load_channels_task)
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
@@ -119,7 +303,11 @@ impl cosmic::Application for AppModel {
                 .into();
         }
 
-        let icon = "audio-card-symbolic";
+        let icon = if self.play_state == State::Playing {
+            "audio-card-symbolic"
+        } else {
+            "audio-card-symbolic"
+        };
 
         self.core
             .applet
@@ -138,23 +326,39 @@ impl cosmic::Application for AppModel {
             ).into();
         }
 
-        let (play_pause_icon, play_pause_label) = match self.play_state {
-            State::Playing | State::Paused => {
-                ("media-playback-stop-symbolic", "Stop")
-            }
-            _ => ("media-playback-start-symbolic", "Play"),
-        };
+        // Show error message if there is one
+        if let Some(error) = &self.error_message {
+            let error_widget = widget::column()
+                .padding(10)
+                .spacing(10)
+                .push(widget::text::text("Error loading channels:").size(14))
+                .push(widget::text::text(error).size(12))
+                .push(
+                    widget::button::text("Use Defaults")
+                        .on_press(Message::ChannelsLoaded(channels::default_channels().channels))
+                );
+            return self.core.applet.popup_container(error_widget).into();
+        }
 
-        let content_list = widget::list_column()
-            .padding(5)
-            .spacing(0)
-            .add(widget::settings::item(
-                play_pause_label,
-                widget::button::icon(widget::icon::from_name(play_pause_icon))
-                    .on_press(Message::TogglePlayback),
-            ));
+        // Show add station form
+        if self.adding_station {
+            return self.view_add_station_form();
+        }
 
-        self.core.applet.popup_container(content_list).into()
+        // Show message if no channels loaded yet
+        if self.channels.is_empty() {
+            let loading_widget = widget::column()
+                .padding(10)
+                .spacing(10)
+                .push(widget::text::text("Loading channels..."))
+                .push(
+                    widget::button::text("Add Station")
+                        .on_press(Message::ToggleAddStation)
+                );
+            return self.core.applet.popup_container(loading_widget).into();
+        }
+
+        self.view_channel_list()
     }
 
     /// Register subscriptions for this application.
@@ -240,26 +444,146 @@ impl cosmic::Application for AppModel {
                 self.config = config;
             }
             Message::TogglePlayback => {
+                // Legacy toggle - stops if playing, otherwise no-op
                 if let Some(player) = &self.player {
-                    match self.play_state {
-                        State::Playing | State::Paused => {
-                            if let Err(e) = player.stop() {
-                                tracing::error!("Failed to stop playback: {}", e);
-                            }
+                    if self.play_state == State::Playing {
+                        if let Err(e) = player.stop() {
+                            tracing::error!("Failed to stop playback: {}", e);
                         }
-                        _ => {
-                            if let Err(e) = player.play("http://icecast.radiofrance.fr/fip-midfi.mp3") {
-                                tracing::error!("Failed to start playback: {}", e);
-                            }
-                        }
+                        self.current_channel_idx = None;
                     }
                 }
             },
+            Message::PlayChannel(idx) => {
+                if let Some(channel) = self.channels.get(idx) {
+                    if let Some(player) = &self.player {
+                        // Stop any current playback
+                        if let Err(e) = player.stop() {
+                            tracing::error!("Failed to stop previous playback: {}", e);
+                        }
+                        
+                        // Start playing the selected channel
+                        if let Err(e) = player.play(&channel.uri) {
+                            tracing::error!("Failed to start playback of {}: {}", channel.name, e);
+                            self.error_message = Some(format!("Failed to play {}", channel.name));
+                        } else {
+                            self.current_channel_idx = Some(idx);
+                            self.error_message = None;
+                            tracing::info!("Started playing: {} ({})", channel.name, channel.uri);
+                        }
+                    }
+                }
+            }
+            Message::StopPlayback => {
+                if let Some(player) = &self.player {
+                    if let Err(e) = player.stop() {
+                        tracing::error!("Failed to stop playback: {}", e);
+                    }
+                }
+                self.current_channel_idx = None;
+            }
             Message::PlayerStateChanged(state) => {
                 self.play_state = state;
+                // If playback stops unexpectedly, clear current channel
+                if state == State::Null {
+                    self.current_channel_idx = None;
+                }
             }
             Message::MetadataUpdated(_tags) => {
                 // Placeholder for metadata extraction
+            }
+            Message::ChannelsLoaded(channels) => {
+                self.channels = channels;
+                self.error_message = None;
+                tracing::info!("Loaded {} channels", self.channels.len());
+            }
+            Message::ChannelError(error) => {
+                tracing::error!("Failed to load channels: {}", error);
+                self.error_message = Some(error);
+            }
+            Message::ToggleAddStation => {
+                self.adding_station = !self.adding_station;
+                if !self.adding_station {
+                    // Clear form when closing
+                    self.new_station_name.clear();
+                    self.new_station_url.clear();
+                    self.new_station_error = None;
+                }
+            }
+            Message::NewStationNameChanged(name) => {
+                self.new_station_name = name;
+                self.new_station_error = None;
+            }
+            Message::NewStationUrlChanged(url) => {
+                self.new_station_url = url;
+                self.new_station_error = None;
+            }
+            Message::SaveNewStation => {
+                // Validate inputs
+                let name = self.new_station_name.trim();
+                let url = self.new_station_url.trim();
+                
+                if name.is_empty() {
+                    self.new_station_error = Some("Station name is required".to_string());
+                    return Task::none();
+                }
+                
+                if url.is_empty() {
+                    self.new_station_error = Some("Stream URL is required".to_string());
+                    return Task::none();
+                }
+                
+                // Basic URL validation
+                if !url.starts_with("http://") && !url.starts_with("https://") {
+                    self.new_station_error = Some("URL must start with http:// or https://".to_string());
+                    return Task::none();
+                }
+                
+                // Generate ID from name
+                let id = name.to_lowercase()
+                    .replace(' ', "-")
+                    .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
+                
+                if id.is_empty() {
+                    self.new_station_error = Some("Invalid station name".to_string());
+                    return Task::none();
+                }
+                
+                // Create new channel
+                let new_channel = Channel {
+                    id,
+                    name: name.to_string(),
+                    uri: url.to_string(),
+                    favourite: false,
+                };
+                
+                // Add to list
+                self.channels.push(new_channel);
+                
+                // Save to file
+                let list = ChannelList {
+                    channels: self.channels.clone(),
+                };
+                
+                if let Err(e) = channels::save_channels(&list) {
+                    tracing::error!("Failed to save channels: {}", e);
+                    self.error_message = Some(format!("Failed to save: {}", e));
+                    // Remove the channel we just added
+                    self.channels.pop();
+                } else {
+                    tracing::info!("Added new station: {}", name);
+                    // Clear form and close
+                    self.new_station_name.clear();
+                    self.new_station_url.clear();
+                    self.new_station_error = None;
+                    self.adding_station = false;
+                }
+            }
+            Message::CancelAddStation => {
+                self.adding_station = false;
+                self.new_station_name.clear();
+                self.new_station_url.clear();
+                self.new_station_error = None;
             }
             Message::TogglePopup => {
                 return if let Some(p) = self.popup.take() {

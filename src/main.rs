@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod app;
+mod channels;
 mod config;
 mod i18n;
 mod player;
