@@ -119,10 +119,7 @@ impl cosmic::Application for AppModel {
                 .into();
         }
 
-        let icon = match self.play_state {
-            State::Playing | State::Paused => "media-playback-stop-symbolic",
-            _ => "display-symbolic",
-        };
+        let icon = "audio-card-symbolic";
 
         self.core
             .applet
