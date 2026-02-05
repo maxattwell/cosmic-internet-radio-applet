@@ -5,6 +5,10 @@ debug/
 target/
 vendor/
 vendor.tar
+result
+result-*
+.direnv/
+repl-history
 debian/*
 !debian/changelog
 !debian/control
