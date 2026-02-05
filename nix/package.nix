@@ -10,10 +10,12 @@
   gst-plugins-good,
   gst-plugins-bad,
   gst-plugins-ugly,
+  gst-libav,
   wayland,
   libxkbcommon,
   libGL,
   makeWrapper,
+  glib-networking,
 }:
 
 rustPlatform.buildRustPackage rec {
@@ -37,15 +39,18 @@ rustPlatform.buildRustPackage rec {
     gst-plugins-good
     gst-plugins-bad
     gst-plugins-ugly
+    gst-libav
     wayland
     libxkbcommon
     libGL
+    glib-networking
   ];
 
-  # GStreamer needs to find its plugins
+  # GStreamer needs to find its plugins and TLS support
   postInstall = ''
     wrapProgram $out/bin/cosmic-internet-radio-applet \
-      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "$GST_PLUGIN_SYSTEM_PATH_1_0"
+      --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "$GST_PLUGIN_SYSTEM_PATH_1_0" \
+      --prefix GIO_EXTRA_MODULES : "${glib-networking}/lib/gio/modules"
   '';
 
   dontUseJustBuild = true;
