@@ -1,5 +1,5 @@
-name := 'cosmic-internet-radio-applet'
-appid := 'com.github.maxattwell.cosmic-internet-radio-applet'
+name := 'cosmic-ext-applet-radio'
+appid := 'com.github.maxattwell.cosmic-ext-applet-radio'
 
 rootdir := ''
 prefix := '/usr'

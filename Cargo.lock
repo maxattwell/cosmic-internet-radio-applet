@@ -1042,21 +1042,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmic-freedesktop-icons"
-version = "0.4.0"
-source = "git+https://github.com/pop-os/freedesktop-icons#7a61a704f6d1ec41f71cbe766e3cc484858523fa"
-dependencies = [
- "bstr",
- "btoi",
- "memchr",
- "memmap2 0.9.9",
- "thiserror 2.0.18",
- "tracing",
- "xdg",
-]
-
-[[package]]
-name = "cosmic-internet-radio-applet"
+name = "cosmic-ext-applet-radio"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
@@ -1072,6 +1058,20 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "cosmic-freedesktop-icons"
+version = "0.4.0"
+source = "git+https://github.com/pop-os/freedesktop-icons#7a61a704f6d1ec41f71cbe766e3cc484858523fa"
+dependencies = [
+ "bstr",
+ "btoi",
+ "memchr",
+ "memmap2 0.9.9",
+ "thiserror 2.0.18",
+ "tracing",
+ "xdg",
 ]
 
 [[package]]

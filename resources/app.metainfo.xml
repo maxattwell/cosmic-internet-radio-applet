@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.maxattwell.cosmic-internet-radio-applet</id>
+  <id>com.github.maxattwell.cosmic-ext-applet-radio</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
   <name>Cosmic Internet Radio Applet</name>
   <summary>An internet radio applet for the COSMIC desktop</summary>
   <icon type="remote" width="64" height="64" scale="1">
-    https://github.com/maxattwell/cosmic-internet-radio-applet/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
+    https://github.com/maxattwell/cosmic-ext-applet-radio/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
   </icon>
-  <url type="vcs-browser">https://github.com/maxattwell/cosmic-internet-radio-applet</url>
-  <launchable type="desktop-id">com.github.maxattwell.cosmic-internet-radio-applet.desktop</launchable>
+  <url type="vcs-browser">https://github.com/maxattwell/cosmic-ext-applet-radio</url>
+  <launchable type="desktop-id">com.github.maxattwell.cosmic-ext-applet-radio.desktop</launchable>
   <provides>
-    <id>com.github.maxattwell.cosmic-internet-radio-applet</id>
+    <id>com.github.maxattwell.cosmic-ext-applet-radio</id>
     <binaries>
-      <binary>cosmic-internet-radio-applet</binary>
+      <binary>cosmic-ext-applet-radio</binary>
     </binaries>
   </provides>
   <requires>

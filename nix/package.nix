@@ -19,7 +19,7 @@
 }:
 
 rustPlatform.buildRustPackage rec {
-  pname = "cosmic-internet-radio-applet";
+  pname = "cosmic-ext-applet-radio";
   version = "0.1.0";
 
   src = lib.cleanSource ../.;
@@ -48,7 +48,7 @@ rustPlatform.buildRustPackage rec {
 
   # GStreamer needs to find its plugins and TLS support
   postInstall = ''
-    wrapProgram $out/bin/cosmic-internet-radio-applet \
+    wrapProgram $out/bin/cosmic-ext-applet-radio \
       --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "$GST_PLUGIN_SYSTEM_PATH_1_0" \
       --prefix GIO_EXTRA_MODULES : "${glib-networking}/lib/gio/modules"
   '';
@@ -67,10 +67,10 @@ rustPlatform.buildRustPackage rec {
 
   meta = with lib; {
     description = "An internet radio applet for the COSMIC desktop";
-    homepage = "https://github.com/maxattwell/cosmic-internet-radio-applet";
+    homepage = "https://github.com/maxattwell/cosmic-ext-applet-radio";
     license = licenses.mpl20;
     maintainers = [ ];
     platforms = platforms.linux;
-    mainProgram = "cosmic-internet-radio-applet";
+    mainProgram = "cosmic-ext-applet-radio";
   };
 }

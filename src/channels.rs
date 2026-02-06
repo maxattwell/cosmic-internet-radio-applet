@@ -32,7 +32,7 @@ pub enum ChannelError {
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("cosmic-internet-radio-applet")
+        .join("cosmic-ext-applet-radio")
 }
 
 /// Returns the full path to the channels.toml file

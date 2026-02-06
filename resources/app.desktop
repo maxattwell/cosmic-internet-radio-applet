@@ -2,8 +2,8 @@
 Name=Cosmic Internet Radio Applet
 Comment=An internet radio applet for the COSMIC desktop
 Type=Application
-Icon=com.github.maxattwell.cosmic-internet-radio-applet
-Exec=cosmic-internet-radio-applet %F
+Icon=com.github.maxattwell.cosmic-ext-applet-radio
+Exec=cosmic-ext-applet-radio %F
 Terminal=false
 StartupNotify=true
 Categories=COSMIC
